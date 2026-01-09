@@ -2,35 +2,54 @@ name: Deploy Go Backend
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_KEY }}
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
 
-    - name: Deploy to server
-      run: |
-        ssh -o StrictHostKeyChecking=no \
-        ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
-          mkdir -p ${{ secrets.APP_DIR }}
-          cd ${{ secrets.APP_DIR }}
-          if [ ! -d .git ]; then
-            git clone https://github.com/helwyza-f/go-ci-cd-dummy.git .
-          else
-            git pull origin main
-          fi
-          docker build -t go-dummy .
-          docker stop go-dummy || true
-          docker rm go-dummy || true
-          docker run -d --name go-dummy -p 8080:8080 go-dummy
-        EOF
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
 
+            APP_DIR="${{ secrets.APP_DIR }}"
+
+            echo "Deploying to $APP_DIR"
+
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            if [ ! -d ".git" ]; then
+              echo "Cloning repo..."
+              git clone https://github.com/helwyza-f/go-ci-cd-dummy.git .
+            else
+              echo "Pulling latest code..."
+              git pull origin main
+            fi
+
+            echo "Building docker image..."
+            docker build -t go-dummy .
+
+            echo "Restarting container..."
+            docker stop go-dummy || true
+            docker rm go-dummy || true
+
+            docker run -d \
+              --name go-dummy \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              go-dummy
+
+            echo "Deploy finished 🚀"
+          EOF
